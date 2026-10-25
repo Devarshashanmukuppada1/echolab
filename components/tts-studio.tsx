@@ -1,582 +1,289 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { useState, useRef, useEffect } from 'react'
 import { Slider } from '@/components/ui/slider'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AudioWaveform } from '@/components/audio-waveform'
-import { Play, Pause, Volume2, Settings, Save, Download, Copy, Share2, RotateCcw, Upload, Sparkles, Zap, Clock, Info } from 'lucide-react'
-import { useVoiceStore } from '@/stores/voice-store'
-import { useAudioStore } from '@/stores/audio-store'
-import { cn } from '@/lib/utils'
-import { apiClient } from '@/lib/api'
-import { Voice } from '@/types/voice'
-
-const models = [
-  { value: 'sense-s1', label: 'Sense S1', description: 'Professional voice with excellent clarity' },
-  { value: 'sense-s2', label: 'Sense S2', description: 'Educational voice optimized for teaching' },
-  { value: 'sense-s3', label: 'Sense S3', description: 'Creative and engaging voice' },
-  { value: 'sense-s4', label: 'Sense S4', description: 'Natural conversational voice' },
-  { value: 'sense-s5', label: 'Sense S5', description: 'Multilingual voice' },
-]
-
-const generateModes = [
-  { value: 'auto', label: 'Auto', description: 'Smart generation with optimization' },
-  { value: 'precise', label: 'Precise', description: 'High quality with detailed control' },
-  { value: 'fast', label: 'Fast', description: 'Quick generation for real-time use' },
-]
+import { Play, Pause, Volume2, Settings, FileText, Zap, PauseCircle } from 'lucide-react'
+import { useTTS } from '@/hooks/use-tts'
+import { useAudioPlayer } from '@/hooks/use-audio-player'
 
 export function TTSStudio() {
   const [text, setText] = useState('')
-  const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null)
-  const [audioUrl, setAudioUrl] = useState<string>('')
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [generationHistory, setGenerationHistory] = useState<Array<{ id: string; text: string; timestamp: Date; duration: number }>>([])
-
-  // Controls
+  const [voice, setVoice] = useState('neural')
   const [stability, setStability] = useState(0.5)
-  const [clarity, setClarity] = useState(0.8)
-  const [exaggeration, setExaggeration] = useState(0.3)
-  const [speed, setSpeed] = useState(1.0)
-  const [volume, setVolume] = useState(1.0)
-  const [model, setModel] = useState('sense-s1')
-  const [format, setFormat] = useState<'mp3' | 'wav'>('mp3')
-  const [sampleRate, setSampleRate] = useState(24000)
+  const [clarity, setClarity] = useState(0.5)
+  const [exaggeration, setExaggeration] = useState(0.5)
+  const [model, setModel] = useState('multilingual')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const { voices, fetchVoices } = useVoiceStore()
-  const { addToHistory, setCurrentAudio } = useAudioStore()
+  const { generate, isGenerating, lastResult, error } = useTTS()
+  const player = useAudioPlayer(lastResult?.audioUrl ?? null)
 
-  useEffect(() => {
-    fetchVoices()
-  }, [fetchVoices])
-
-  const generateAudio = useCallback(async () => {
-    if (!text.trim() || !selectedVoice) {
-      return
-    }
-
-    setIsGenerating(true)
-    setAudioUrl('')
-    setIsPlaying(false)
-
-    try {
-      // Make API call to generate speech
-      const response = await apiClient.post('/api/tts', {
-        text,
-        voice: selectedVoice.id,
-        model,
-        stability,
-        clarity,
-        exaggeration,
-        speed,
-        format,
-        sampleRate,
-      })
-
-      // Convert response to audio URL
-      const audioBlob = new Blob([response as ArrayBuffer], {
-        type: format === 'wav' ? 'audio/wav' : 'audio/mpeg'
-      })
-      const audioUrl = URL.createObjectURL(audioBlob)
-      setAudioUrl(audioUrl)
-
-      // Add to history
-      const newHistoryItem = {
-        id: Date.now().toString(),
-        text,
-        timestamp: new Date(),
-        duration: Math.ceil(text.length / 10), // rough estimation
-      }
-      setGenerationHistory(prev => [newHistoryItem, ...prev].slice(0, 50))
-
-      // Add to audio store
-      addToHistory({
-        id: newHistoryItem.id,
-        name: `Generated from: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`,
-        url: audioUrl,
-        duration: newHistoryItem.duration,
-        size: audioBlob.size,
-        format,
-        sampleRate,
-        bitrate: format === 'mp3' ? 128000 : 1411200,
-        createdAt: new Date().toISOString(),
-        voiceId: selectedVoice.id,
-        voiceName: selectedVoice.name,
-        metadata: {
-          stability,
-          clarity,
-          exaggeration,
-          speed,
-          model,
-          language: selectedVoice.language,
-        }
-      })
-
-      setCurrentAudio(null)
-
-    } catch (error) {
-      console.error('Audio generation failed:', error)
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [
-    text, selectedVoice, model, stability, clarity, exaggeration, speed, format, sampleRate,
-    apiClient, addToHistory, setCurrentAudio
-  ])
-
-  const playAudio = useCallback(() => {
-    setIsPlaying(!isPlaying)
-  }, [isPlaying])
-
-  const clearText = () => {
-    setText('')
-    setAudioUrl('')
-    setIsPlaying(false)
+  const handleGenerate = async () => {
+    if (!text.trim()) return
+    await generate(text)
   }
 
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error)
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      handleGenerate()
     }
   }
 
-  const saveAsTemplate = () => {
-    const template = {
-      text,
-      voice: selectedVoice?.id,
-      settings: { stability, clarity, exaggeration, speed, model, format, sampleRate }
-    }
-    localStorage.setItem('tts-template', JSON.stringify(template))
-  }
+  const voiceOptions = [
+    { value: 'neural', label: 'Neural' },
+    { value: 'fast', label: 'Fast' },
+    { value: 'clear', label: 'Clear' },
+  ]
 
-  const loadFromTemplate = () => {
-    const template = localStorage.getItem('tts-template')
-    if (template) {
-      try {
-        const parsed = JSON.parse(template)
-        setText(parsed.text)
-        setSelectedVoice(voices.find(v => v.id === parsed.voice) || null)
-        setStability(parsed.settings.stability || 0.5)
-        setClarity(parsed.settings.clarity || 0.8)
-        setExaggeration(parsed.settings.exaggeration || 0.3)
-        setSpeed(parsed.settings.speed || 1.0)
-        setModel(parsed.settings.model || 'sense-s1')
-        setFormat(parsed.settings.format || 'mp3')
-        setSampleRate(parsed.settings.sampleRate || 24000)
-      } catch (error) {
-        console.error('Failed to load template:', error)
-      }
-    }
-  }
-
-  const characterCount = text.length
-  const wordCount = text.split(' ').filter(word => word.length > 0).length
-  const estimatedDuration = Math.ceil(characterCount / 15) // 15 chars per second approximation
+  const modelOptions = [
+    { value: 'multilingual', label: 'Multilingual' },
+    { value: 'expressive', label: 'Expressive' },
+    { value: 'low-latency', label: 'Low Latency' },
+  ]
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">TTS Studio</h2>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Generate high-quality speech with fine-tuned voice controls
-            </p>
-          </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Text-to-Speech Studio
+          </CardTitle>
+          <CardDescription>
+            Generate high-quality speech from text with customizable voice settings
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
-          <div className="flex items-center space-x-3">
-            <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200">
-              <Zap className="h-3 w-3 mr-1" />
-              AI Powered
-            </Badge>
-            <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-200">
-              <Sparkles className="h-3 w-3 mr-1" />
-              Studio Quality
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-hidden p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-          {/* Left Panel - Text Input & Controls */}
-          <div className="lg:col-span-1 space-y-6 overflow-y-auto">
-            {/* Text Input */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Text Input</CardTitle>
-                <CardDescription>
-                  Enter the text you want to convert to speech
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Textarea
-                  placeholder="Type or paste your text here..."
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  className="min-h-[120px] resize-none"
-                />
-
-                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-                  <span>{characterCount} characters</span>
-                  <span>{wordCount} words</span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={copyToClipboard}
-                    disabled={!text}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={saveAsTemplate}
-                    disabled={!text}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Template
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadFromTemplate}
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Load
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={clearText}
-                    disabled={!text}
-                  >
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    Clear
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Voice Selection */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Voice Selection</CardTitle>
-                <CardDescription>
-                  Choose the voice for your generated audio
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Select
-                  value={selectedVoice?.id || ''}
-                  onValueChange={(voiceId) => {
-                    const voice = voices.find(v => v.id === voiceId)
-                    setSelectedVoice(voice || null)
-                  }}
+      {/* Main Interface */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Text Input */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Text Input</CardTitle>
+              <CardDescription>
+                Enter or paste your text (max 5000 characters)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <textarea
+                placeholder="Type your text here..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyPress={handleKeyPress}
+                maxLength={5000}
+                className="w-full h-32 p-3 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-white"
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {text.length}/5000 characters
+                </span>
+                <button
+                  onClick={handleGenerate}
+                  disabled={isGenerating || !text.trim()}
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a voice" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {voices.map((voice) => (
-                      <SelectItem key={voice.id} value={voice.id}>
-                        <div className="flex items-center space-x-2">
-                          <span>{voice.name}</span>
-                          {voice.isPremium && (
-                            <Badge variant="secondary" className="text-xs">Premium</Badge>
-                          )}
-                          {voice.isCloned && (
-                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">Cloned</Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {selectedVoice && (
-                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
-                      <div className="flex justify-between">
-                        <span>Gender:</span>
-                        <span className="font-medium">{selectedVoice.gender}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Accent:</span>
-                        <span className="font-medium">{selectedVoice.accent}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Language:</span>
-                        <span className="font-medium">{selectedVoice.language}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Category:</span>
-                        <span className="font-medium">{selectedVoice.category}</span>
-                      </div>
-                    </div>
+                  {isGenerating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4" />
+                      Generate Audio
+                    </>
+                  )}
+                </button>
+              </div>
+              {error && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <div className="text-sm text-red-600 dark:text-red-400">
+                    Error: {error}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-            {/* Generation Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Generation Settings</CardTitle>
-                <CardDescription>
-                  Fine-tune your audio generation parameters
-                </CardDescription>
-              </CardHeader>
+          {/* Advanced Settings */}
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Voice Settings
+                <button
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="ml-auto text-sm text-blue-500 hover:text-blue-600"
+                >
+                  {showAdvanced ? 'Hide' : 'Show'}
+                </button>
+              </CardTitle>
+            </CardHeader>
+            {showAdvanced && (
               <CardContent className="space-y-6">
-                {/* Model Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="model">Model</Label>
-                  <Select value={model} onValueChange={setModel}>
+                {/* Voice Selection */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Voice Type</label>
+                  <Select value={voice} onValueChange={setVoice}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>
-                          <div>
-                            <div className="font-medium">{m.label}</div>
-                            <div className="text-xs text-gray-500">{m.description}</div>
-                          </div>
+                      {voiceOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {/* Stability Slider */}
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label htmlFor="stability">Stability</Label>
-                    <span className="text-sm text-gray-500">{(stability * 100).toFixed(0)}%</span>
-                  </div>
-                  <Slider
-                    id="stability"
-                    value={[stability]}
-                    onValueChange={(value) => setStability(value[0])}
-                    max={1}
-                    step={0.1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400">
-                    <span>Less Stable (More Expressive)</span>
-                    <span>More Stable (Less Expressive)</span>
-                  </div>
-                </div>
-
-                {/* Clarity Slider */}
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label htmlFor="clarity">Clarity</Label>
-                    <span className="text-sm text-gray-500">{(clarity * 100).toFixed(0)}%</span>
-                  </div>
-                  <Slider
-                    id="clarity"
-                    value={[clarity]}
-                    onValueChange={(value) => setClarity(value[0])}
-                    max={1}
-                    step={0.1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400">
-                    <span>Less Clear</span>
-                    <span>More Clear</span>
-                  </div>
-                </div>
-
-                {/* Exaggeration Slider */}
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label htmlFor="exaggeration">Exaggeration</Label>
-                    <span className="text-sm text-gray-500">{(exaggeration * 100).toFixed(0)}%</span>
-                  </div>
-                  <Slider
-                    id="exaggeration"
-                    value={[exaggeration]}
-                    onValueChange={(value) => setExaggeration(value[0])}
-                    max={1}
-                    step={0.1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400">
-                    <span>Natural</span>
-                    <span>Exaggerated</span>
-                  </div>
-                </div>
-
-                {/* Speed Slider */}
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <Label htmlFor="speed">Speed</Label>
-                    <span className="text-sm text-gray-500">{speed.toFixed(1)}x</span>
-                  </div>
-                  <Slider
-                    id="speed"
-                    value={[speed]}
-                    onValueChange={(value) => setSpeed(value[0])}
-                    min={0.5}
-                    max={2.0}
-                    step={0.1}
-                    className="w-full"
-                  />
-                  <div className="flex justify-between text-xs text-gray-400">
-                    <span>0.5x (Slow)</span>
-                    <span>2.0x (Fast)</span>
-                  </div>
-                </div>
-
-                {/* Format Selection */}
-                <div className="space-y-2">
-                  <Label>Output Format</Label>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant={format === 'mp3' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setFormat('mp3')}
-                      className="flex-1"
-                    >
-                      MP3
-                    </Button>
-                    <Button
-                      variant={format === 'wav' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setFormat('wav')}
-                      className="flex-1"
-                    >
-                      WAV
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Sample Rate */}
-                <div className="space-y-2">
-                  <Label htmlFor="sampleRate">Sample Rate</Label>
-                  <Select value={sampleRate.toString()} onValueChange={(value) => setSampleRate(parseInt(value))}>`
+                {/* Model Selection */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Model</label>
+                  <Select value={model} onValueChange={setModel}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="8000">8 kHz</SelectItem>
-                      <SelectItem value="16000">16 kHz</SelectItem>
-                      <SelectItem value="22050">22 kHz</SelectItem>
-                      <SelectItem value="24000">24 kHz</SelectItem>
-                      <SelectItem value="44100">44 kHz</SelectItem>
-                      <SelectItem value="48000">48 kHz</SelectItem>
+                      {modelOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Generate Button */}
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={generateAudio}
-              disabled={!text.trim() || !selectedVoice || isGenerating}
-            >
-              {isGenerating ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Zap className="h-4 w-4 mr-2" />
-                  Generate Audio
-                </>
-              )}
-            </Button>
-          </div>
-
-          {/* Right Panel - Audio Waveform & Playback */}
-          <div className="lg:col-span-2 space-y-6 overflow-y-auto">
-            {/* Audio Player */}
-            {audioUrl ? (
-              <AudioWaveform
-                audioUrl={audioUrl}
-                autoPlay={false}
-                showControls={true}
-                showMetadata={true}
-                showWaveform={true}
-              />
-            ) : (
-              <Card className="flex items-center justify-center py-20">
-                <div className="text-center">
-                  <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                    <Info className="h-12 w-12 text-gray-400" />
+                {/* Sliders */}
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium">Stability</label>
+                      <span className="text-sm text-gray-500">{(stability * 100).toFixed(0)}%</span>
+                    </div>
+                    <Slider
+                      value={[stability]}
+                      onValueChange={(value) => setStability(value[0])}
+                      max={1}
+                      step={0.1}
+                      className="w-full"
+                    />
                   </div>
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                    No Audio Generated Yet
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400 max-w-md">
-                    Enter some text, select a voice, and click "Generate Audio" to create your speech synthesis.
-                  </p>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium">Clarity</label>
+                      <span className="text-sm text-gray-500">{(clarity * 100).toFixed(0)}%</span>
+                    </div>
+                    <Slider
+                      value={[clarity]}
+                      onValueChange={(value) => setClarity(value[0])}
+                      max={1}
+                      step={0.1}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium">Exaggeration</label>
+                      <span className="text-sm text-gray-500">{(exaggeration * 100).toFixed(0)}%</span>
+                    </div>
+                    <Slider
+                      value={[exaggeration]}
+                      onValueChange={(value) => setExaggeration(value[0])}
+                      max={1}
+                      step={0.1}
+                      className="w-full"
+                    />
+                  </div>
                 </div>
-              </Card>
+              </CardContent>
             )}
+          </Card>
+        </div>
 
-            {/* Generation History */}
-            {generationHistory.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Recent Generations</CardTitle>
-                  <CardDescription>
-                    Your recent text-to-speech conversions
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {generationHistory.slice(0, 5).map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        onClick={() => {
-                          setText(item.text)
-                          setAudioUrl('')
-                          setIsPlaying(false)
-                        }}
-                      >
-                        <div className="flex-1">
-                          <div className="text-sm font-medium truncate">{item.text}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            {item.timestamp.toLocaleTimeString()} • {item.duration}s
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setText(item.text)
-                          }}
-                        >
-                          Use
-                        </Button>
-                      </div>
-                    ))}
+        {/* Audio Player Panel */}
+        <div className="lg:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Volume2 className="h-5 w-5" />
+                Audio Player
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {lastResult?.audioUrl ? (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Duration</span>
+                      <span className="font-mono">{(lastResult.durationMs / 1000).toFixed(1)}s</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Generated</span>
+                      <span className="text-sm">Today</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Quality</span>
+                      <Badge variant="secondary">High</Badge>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={player.isPlaying ? player.pauseAudio : player.playAudio}
+                      disabled={!player.canPlay}
+                      className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    >
+                      {player.isPlaying ? (
+                        <PauseCircle className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      {player.isPlaying ? 'Pause' : 'Play'}
+                    </button>
+                    <button
+                      onClick={player.stopAudio}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      Stop
+                    </button>
+                  </div>
+
+                  {player.error && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                      <div className="text-sm text-red-600 dark:text-red-400">
+                        Error: {player.error}
+                      </div>
+                    </div>
+                  )}
+
+                  {player.isLoading && (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                      <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">Loading...</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-12 text-center">
+                  <div className="text-gray-500 dark:text-gray-400">
+                    <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No audio generated yet</p>
+                    <p className="text-xs mt-1">Enter text and click "Generate Audio"</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>
