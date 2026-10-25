@@ -1,0 +1,172 @@
+# Dependencies
+dist/
+node_modules/
+.pnp.*
+.yarn/cache/
+.yarn/unplugged/
+.git/
+.npm/
+!.yarn/releases/
+
+# Local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Application logs
+logs/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directories used by many test frameworks
+coverage/
+*.coverage
+*.lcov
+
+# Build output
+.next/
+out/
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+.tmp/
+*.bak
+*.temp
+
+# Build artifacts
+*.min.js
+*.min.css
+*.min.css.map
+*.min.js.map
+
+# Package manager cache
+.npm/
+.yarn/
+.nyc_output/
+.nyc_output.bk
+.pnpm-store/
+
+# Profiling
+chrome-profiler-events.json
+perf.data
+perf.data\.js
+
+# Temporary files created by editors
+*.swp
+*.swo
+*~
+
+# Serverless directories
+.serverless/
+
+# Logs
+logs/
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Distribution zip
+*.zip
+
+# Build artifacts
+temp/
+build/
+dist/
+
+# Debug files
+*.map
+
+# IDE-specific
+.vscode/
+.idea/
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.temp
+*.tmp
+
+# Package manager specific
+yarn.lock
+pnpm-lock.yaml
+package-lock.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Local uploads
+uploads/
+media/
+storage/
+
+# Local configuration
+.local*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.code-workspace
+*.code-profile
+
+# System files
+[Dd]esktop.ini
+[Dd]esktop.ini?
+[Oo]perating [Ss]ystem [Ff]older
+[Oo]perating [Ss]ystem [Ff]older?
+
+# OS metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variable files
+.env*.local
+.env
+
+# Runtime temporary files
+*.temp
+*.tmp
+
+# Persistent SQLite databases
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+
+# Sessions
+*.session
+
+# Virtual machine crash logs
+*.vmwarevm
+
+# Binary data
+*.bin
+*.dat
